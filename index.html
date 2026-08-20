@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>友達とブラックジャック</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#0b1020;color:#fff}
+.wrap{max-width:900px;margin:auto;padding:20px}.card{background:#171e35;border:1px solid #303b5f;border-radius:18px;padding:18px;margin:12px 0}
+h1{margin:4px 0 16px}.row{display:flex;gap:10px;flex-wrap:wrap}input,button{font:inherit;border-radius:10px;padding:12px;border:0}input{background:#fff;color:#111;width:180px}button{background:#3b82f6;color:#fff;font-weight:700;cursor:pointer}button:disabled{opacity:.4;cursor:not-allowed}
+.hidden{display:none}.players{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}.player{background:#11172a;border-radius:12px;padding:12px;border:1px solid #293554}.me{border-color:#60a5fa}.turn{box-shadow:0 0 0 2px #facc15}.chips{color:#facc15}.cards{font-size:30px;letter-spacing:4px}.red{color:#fb7185}.msg{font-size:18px;min-height:28px}.small{color:#aab5d0;font-size:13px}.betBtns button{background:#334155}.dealer{font-size:20px}
+</style>
+</head>
+<body><div class="wrap">
+<h1>♠ 友達とブラックジャック ♦</h1>
+
+<div id="join" class="card">
+  <p>同じルームコードを友達と共有して、それぞれのスマホから入ってください。</p>
+  <div class="row"><input id="name" placeholder="名前"><input id="code" placeholder="ルームコード"><button onclick="join()">入室</button></div>
+  <p class="small">チップはゲーム内ポイントです。現金・換金はありません。</p>
+</div>
+
+<div id="game" class="hidden">
+  <div class="card"><div class="row"><b>ルーム: <span id="roomCode"></span></b><span id="dealerOrder"></span></div><div class="msg" id="msg"></div></div>
+  <div class="card"><h2>ディーラー</h2><div class="cards" id="dealerCards"></div><div id="dealerValue"></div></div>
+  <div class="card"><h2>プレイヤー</h2><div class="players" id="players"></div></div>
+  <div class="card">
+    <h2>操作</h2>
+    <div id="betArea">
+      <div class="betBtns row">
+        <button onclick="bet(10)">10</button><button onclick="bet(50)">50</button><button onclick="bet(100)">100</button><button onclick="bet(200)">200</button>
+      </div>
+    </div>
+    <div id="playArea" class="row hidden"><button id="hit" onclick="act('hit')">ヒット</button><button id="stand" onclick="act('stand')">スタンド</button></div>
+    <button id="new" class="hidden" onclick="socket.emit('newRound')">次のラウンド</button>
+  </div>
+</div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const socket=io(); let myId=null,lastState=null;
+socket.on("connect",()=>myId=socket.id);
+function join(){socket.emit("join",{name:document.querySelector("#name").value||"プレイヤー",code:document.querySelector("#code").value||"ROOM"});}
+socket.on("errorMsg",alert);
+socket.on("state",s=>{lastState=s; document.querySelector("#join").classList.add("hidden");document.querySelector("#game").classList.remove("hidden");document.querySelector("#roomCode").textContent=document.querySelector("#code").value.toUpperCase();render(s);});
+function cards(a){return a.map(c=>`<span class="${c.s==='♥'||c.s==='♦'?'red':''}">${c.r}${c.s}</span>`).join(" ")}
+function render(s){
+ document.querySelector("#msg").textContent=s.message||"";
+ document.querySelector("#dealerCards").innerHTML=s.dealer.hand.map((c,i)=>s.phase==="playing"&&i===1?"🂠":`<span class="${c.s==='♥'||c.s==='♦'?'red':''}">${c.r}${c.s}</span>`).join(" ");
+ document.querySelector("#dealerValue").textContent=s.dealer.value?`合計 ${s.dealer.value}`:"";
+ document.querySelector("#dealerOrder").textContent=s.players.length?`ディーラー: ${s.players[s.dealerIndex]?.name||""}`:"";
+ document.querySelector("#players").innerHTML=s.players.map(p=>`<div class="player ${p.id===myId?'me':''} ${p.id===s.turn?'turn':''}">
+ <b>${p.name}${p.id===myId?'（自分）':''}</b><br><span class="chips">チップ ${p.chips}</span><br>ベット ${p.bet||0}<div class="cards">${cards(p.hand)}</div>${p.hand.length?`合計 ${calc(p.hand)}`:""}</div>`).join("");
+ const me=s.players.find(p=>p.id===myId), myTurn=s.turn===myId;
+ document.querySelector("#betArea").classList.toggle("hidden",s.phase!=="betting");
+ document.querySelector("#playArea").classList.toggle("hidden",!(s.phase==="playing"&&myTurn));
+ document.querySelector("#new").classList.toggle("hidden",s.phase!=="dealer");
+ document.querySelectorAll("#betArea button").forEach(b=>b.disabled=!me||me.bet>0||me.chips<Number(b.textContent));
+}
+function calc(h){let t=h.reduce((a,c)=>a+c.v,0),a=h.filter(c=>c.r==="A").length;while(t>21&&a--)t-=10;return t}
+function bet(n){socket.emit("bet",n)}
+function act(x){socket.emit(x)}
+</script>
+</body></html>
